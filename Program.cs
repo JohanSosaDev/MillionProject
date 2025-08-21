@@ -1,0 +1,21 @@
+using PropertyApi.Repositories;
+using PropertyApi.Services;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+builder.Services.AddOpenApi();
+builder.Services.AddSingleton<PropertyRepository>();
+builder.Services.AddScoped<PropertyService>();
+builder.Services.AddControllers();
+
+
+var app = builder.Build();
+app.MapControllers();
+app.Run();
+
+
+
+
+
