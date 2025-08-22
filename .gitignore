@@ -6,4 +6,4 @@ obj/
 *.log
 *.suo
 *.DS_Store
-appsettings.json
+appsettings.Development.json
