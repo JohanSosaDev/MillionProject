@@ -1,58 +1,57 @@
+using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using PropertyApi.Config;
 using PropertyApi.Models;
-using SharpCompress.Compressors.PPMd;
 
 namespace PropertyApi.Repositories;
 
-public class PropertyRepository
+public class PropertyRepository : IPropertyRepository
 {
-  private readonly IMongoCollection<Property> _properties;
-  private readonly IMongoCollection<PropertyImage> _images;
+  private readonly IMongoCollection<Property> _col;
 
-  public PropertyRepository(IConfiguration config)
-  {
-    var client = new MongoClient(config["MongoDB:ConnectionString"]);
-    var database = client.GetDatabase(config["MongoDb:DataBase"]);
-    _properties = database.GetCollection<Property>("properties");
-    _images = database.GetCollection<PropertyImage>("propertyImages");
+  public PropertyRepository(IMongoDatabase db, IOptions<MongoSettings> options)
+  { 
+    _col = db.GetCollection<Property>(options.Value.PropertiesCollection);
   }
 
-  public async Task<List<(Property, PropertyImage?)>> GetPropertiesAsync(string? name, string? address, decimal? minPrice, decimal? maxPrice)
+  public async Task<(IReadOnlyList<Property> Items, long Total)> SearchAsync(string? name, string? address, decimal? minPrice, decimal? maxPrice, int page, int pageSize, CancellationToken ct)
   {
-    var filter = Builders<Property>.Filter.Empty;
+    var filters = new List<FilterDefinition<Property>>();
+    var builder = Builders<Property>.Filter;
 
     if (!string.IsNullOrEmpty(name))
-    {
-      filter &= Builders<Property>.Filter.Regex(p => p.Name, new BsonRegularExpression(name, "i"));
-    }
+      filters.Add(builder.Regex(p => p.Name, new BsonRegularExpression(name, "i")));
 
     if (!string.IsNullOrEmpty(address))
-    {
-      filter &= Builders<Property>.Filter.Regex(p => p.Address, new BsonRegularExpression(address, "i"));
-    }
+      filters.Add(builder.Regex(p => p.Name, new BsonRegularExpression(address, "i")));
 
     if (minPrice.HasValue)
-    {
-      filter &= Builders<Property>.Filter.Gte(p => p.Price, minPrice.Value);
-    }
+      filters.Add(builder.Gte(p => p.Price, minPrice.Value));
 
     if (maxPrice.HasValue)
-    {
-      filter &= Builders<Property>.Filter.Gte(p => p.Price, maxPrice.Value);
-    }
+      filters.Add(builder.Lte(p => p.Price, maxPrice.Value));
 
-    var properties = await _properties.Find(filter).ToListAsync();
+    var filter = filters.Count > 0 ? builder.And(filters) : FilterDefinition<Property>.Empty;
 
-    var results = new List<(Property, PropertyImage?)>();
+    var find = _col.Find(filter)
+      .Project(Builders<Property>.Projection
+        .Include(x => x.IdOwner)
+        .Include(x => x.Name)
+        .Include(x => x.Address)
+        .Include(x => x.Price)
+        .Include(x => x.CodeInternal)
+        .Include(x => x.Year)).Sort(Builders<Property>.Sort.Ascending(x => x.Name)).Skip((page - 1) * pageSize).Limit(pageSize);
 
-    foreach (var property in properties)
-    {
-      var image = await _images.Find(i => i.IdProperty == property.IdProperty && i.Enabled).FirstOrDefaultAsync();
-      results.Add((property, image));
-    }
+    var items = find.ToListAsync(ct);
+    var total = _col.CountDocumentsAsync(filter, cancellationToken: ct);
+    await Task.WhenAll(items, total);
 
-    return results;
+    var typedItems = await _col.Find(filter).SortBy(x => x.Name)
+      .Skip((page - 1) * pageSize)
+      .Limit(pageSize)
+      .ToListAsync(ct);
+
+    return (typedItems, total.Result);
   }
-
 }
