@@ -17,5 +17,5 @@ Este proyecto es una API en **C# (.NET 8)** que gestiona propiedades inmobiliari
 
 1. Clonar el repositorio:
    ```sh
-   git clone https://github.com/tu-usuario/RealEstateApi.git
-   cd RealEstateApi
+   git clone https://github.com/JohanSosaDev/MillionProject.git
+   cd MillionProject
